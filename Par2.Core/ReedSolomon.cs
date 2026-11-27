@@ -165,13 +165,27 @@ public sealed class ReedSolomon
     /// </summary>
     public void Process(int blockLength, int inputIndex, byte[] input, byte[][] outputs)
     {
-        int incount = _dataPresent + _dataMissing;
-        for (int outIndex = 0; outIndex < _dataMissing; outIndex++)
+        int outCount = _dataMissing;
+        // Each outputs[outIndex] is an independent accumulator, so the missing
+        // blocks can be reconstructed in parallel. (The caller feeds input
+        // blocks one at a time, so this is the only safe axis to parallelise.)
+        if (outCount > 1)
         {
-            int factor = Matrix[outIndex, inputIndex];
-            if (factor == 0)
-                continue;
-            AddMultiply(outputs[outIndex], blockLength, input, factor);
+            Parallel.For(0, outCount, outIndex =>
+            {
+                int factor = Matrix[outIndex, inputIndex];
+                if (factor != 0)
+                    AddMultiply(outputs[outIndex], blockLength, input, factor);
+            });
+        }
+        else
+        {
+            for (int outIndex = 0; outIndex < outCount; outIndex++)
+            {
+                int factor = Matrix[outIndex, inputIndex];
+                if (factor != 0)
+                    AddMultiply(outputs[outIndex], blockLength, input, factor);
+            }
         }
     }
 

@@ -54,6 +54,40 @@ public class ReedSolomonSimdTests
     }
 
     [Fact]
+    public void Repairs_multiple_missing_blocks_parallel_path()
+    {
+        // 4 data blocks, reconstruct 2 missing ones using 2 recovery blocks.
+        // dataMissing == 2 > 1, so ReedSolomon.Process takes the Parallel.For path.
+        const int blocksize = 64;
+        const int n = 4;
+        var rng = new Random(2026);
+        var data = new byte[n][];
+        for (int g = 0; g < n; g++) { data[g] = new byte[blocksize]; rng.NextBytes(data[g]); }
+
+        // recovery[e] = XOR_g data[g] * BlockBase(g)^e, for e = 0,1.
+        var recovery = new byte[2][] { new byte[blocksize], new byte[blocksize] };
+        for (int e = 0; e < 2; e++)
+            for (int g = 0; g < n; g++)
+                ReedSolomon.AddMultiply(recovery[e], blocksize, data[g], Galois16.Pow(Galois16.BlockBase(g), e));
+
+        // Blocks 1 and 2 are missing; present inputs: data0, data3, recovery0, recovery1.
+        var rs = new ReedSolomon();
+        rs.SetInput(new[] { true, false, false, true });
+        rs.SetOutput(true, 0);
+        rs.SetOutput(true, 1);
+        Assert.True(rs.Compute(out _));
+
+        var outputs = new byte[2][] { new byte[blocksize], new byte[blocksize] };
+        rs.Process(blocksize, 0, data[0], outputs);
+        rs.Process(blocksize, 1, data[3], outputs);
+        rs.Process(blocksize, 2, recovery[0], outputs);
+        rs.Process(blocksize, 3, recovery[1], outputs);
+
+        Assert.Equal(data[1], outputs[0]);
+        Assert.Equal(data[2], outputs[1]);
+    }
+
+    [Fact]
     public void Scalar_path_matches_reference()
     {
         var rng = new Random(99);
