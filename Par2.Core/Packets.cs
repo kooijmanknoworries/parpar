@@ -65,9 +65,9 @@ public sealed class Par2Packet
     public Md5Hash[] FileIds { get; private set; } = Array.Empty<Md5Hash>();
 
     // File description packet
-    public Md5Hash FileId { get; private set; }
-    public Md5Hash HashFull { get; private set; }
-    public Md5Hash Hash16k { get; private set; }
+    public Md5Hash FileId { get; private set; } = default!;
+    public Md5Hash HashFull { get; private set; } = default!;
+    public Md5Hash Hash16k { get; private set; } = default!;
     public ulong FileLength { get; private set; }
     public string FileName { get; private set; } = "";
 

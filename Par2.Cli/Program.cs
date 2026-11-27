@@ -117,7 +117,7 @@ internal static class Program
         };
 
         monitor.MonitorAsync(cts.Token).GetAwaiter().GetResult();
-        opt.Log("Stopped monitoring.");
+        opt.Log?.Invoke("Stopped monitoring.");
         return 0;
     }
 

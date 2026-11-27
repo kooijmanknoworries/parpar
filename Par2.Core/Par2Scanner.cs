@@ -9,7 +9,7 @@ public sealed class RecoverySet
 {
     public string SetId { get; private set; } = "";
     public ulong BlockSize { get; private set; }
-    public Par2Packet Main { get; private set; }
+    public Par2Packet? Main { get; private set; }
     public List<Par2Packet> Descriptions { get; } = new();
     public List<Par2Packet> Verifications { get; } = new();
     public List<Par2Packet> Creators { get; } = new();
@@ -96,7 +96,6 @@ public static class Par2Scanner
         }
 
         int offset = 0;
-        int setIndex = -1;
         string setId = "";
 
         while (offset + Par2Format.HeaderSize <= data.Length)
@@ -118,10 +117,7 @@ public static class Par2Scanner
             if (packet.SetId.IsZero)
                 continue;
             if (setId == "")
-            {
                 setId = packet.SetId.ToString();
-                setIndex = 0;
-            }
 
             if (!sets.TryGetValue(setId, out var set))
             {
@@ -143,10 +139,10 @@ public static class Par2Scanner
                     if (!set.Verifications.Any(v => packet.FileId.Equals(v.FileId)))
                     {
                         set.Verifications.Add(packet);
-                        if (set.HasMain)
+                        if (set.Main is { } main)
                         {
                             set.SourceBlockCount = 0;
-                            foreach (var fileId in set.Main.FileIds)
+                            foreach (var fileId in main.FileIds)
                             {
                                 var v = set.Verifications.FirstOrDefault(x => fileId.Equals(x.FileId));
                                 if (v != null)

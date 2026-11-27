@@ -18,8 +18,34 @@ stores Reed-Solomon recovery data for them, so:
 | Project      | Description                                                    |
 |--------------|----------------------------------------------------------------|
 | `Par2.Core`  | PAR 2.0 format: packets, MD5/CRC32, GF(2^16) Reed-Solomon, writer, scanner, repairer, and the monitored-directory auto-repair engine. |
+| `Par2.App`   | Windows **WPF GUI** (Create / Verify &amp; Repair / Monitor tabs). |
 | `Par2.Cli`   | `par2` command line tool (create / verify / repair / monitor).  |
 | `Par2.Tests` | xUnit tests (GF(2^16) tables, MD5, CRC32, Reed-Solomon, monitor). |
+
+## Windows GUI
+
+`Par2.App` is a WPF desktop application with three tabs:
+
+* **Create** – pick the folder to protect (or add specific files), set
+  redundancy %, block size (automatic or manual KB), number of recovery
+  files and the recovery-file scheme, then *Create recovery volumes*.
+* **Verify & Repair** – choose a `.par2` file and click *Verify only* or
+  *Verify & repair*; the report lists the state of every source file.
+* **Monitor** – set a **watched directory** plus the scan interval and the
+  minimum percentage of recovery data required, then *Start monitor*. The
+  app scans the folder and starts a repair automatically as soon as a
+  recovery set has enough recovery data, logging each action.
+
+Settings are remembered between runs in
+`%APPDATA%\ParPar\settings.json`.
+
+Build and run the GUI on Windows:
+
+```sh
+dotnet run --project Par2.App
+# or produce a runnable app:
+dotnet publish Par2.App -c Release -r win-x64
+```
 
 ## Build & test
 

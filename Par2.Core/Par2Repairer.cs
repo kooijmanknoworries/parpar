@@ -50,11 +50,11 @@ public sealed class Par2Repairer
 
     public async Task<RepairReport> RunAsync(RecoverySet set, string baseDirectory, bool repair, CancellationToken ct = default)
     {
-        if (!set.HasMain)
+        if (set.Main is not { } main)
             return new RepairReport(RepairStatus.Error, 0, 0, 0, set.Recovery.Count, Array.Empty<FileReport>(), "No main packet found for this set.");
 
         long blockSize = (long)set.BlockSize;
-        var fileIds = set.Main.FileIds;
+        var fileIds = main.FileIds;
 
         // Candidate data files (everything in baseDirectory that is not a par2).
         var byName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

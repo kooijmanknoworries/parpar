@@ -1,0 +1,174 @@
+<Window x:Class="Par2.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ParPar — PAR 2.0 recovery volumes"
+        Width="840" Height="640" MinWidth="760" MinHeight="560"
+        WindowStartupLocation="CenterScreen"
+        Closing="Window_Closing">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="#2D5C8A" Padding="12,8">
+            <TextBlock Foreground="White" FontSize="15" FontWeight="Bold">
+                ParPar <Run FontSize="12" FontWeight="Normal" Foreground="#C9D8E8">— PAR 2.0 recovery volume creator, repairer &amp; auto-repair monitor</Run>
+            </TextBlock>
+        </Border>
+
+        <TabControl Grid.Row="1" Margin="8">
+
+            <!-- ================= CREATE ================= -->
+            <TabItem Header="Create">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+                    <StackPanel>
+                        <GroupBox Header="Source files" Padding="8">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="DirBox" Grid.Column="0" VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                                    <Button Grid.Column="1" Content="Browse…" Click="BrowseDirClick" />
+                                </Grid>
+                                <CheckBox x:Name="AllFilesCheck" Margin="0,8,0,0" IsChecked="True">
+                                    Protect every file in the directory (excluding .par2 files)
+                                </CheckBox>
+                                <ListBox x:Name="FileList" Height="140" Margin="0,8,0,0" HorizontalContentAlignment="Stretch" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <Button Content="Add…" Click="AddFilesClick" />
+                                    <Button Content="Remove" Click="RemoveFilesClick" />
+                                    <Button Content="Clear" Click="ClearFilesClick" />
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <GroupBox Header="Recovery settings" Padding="8" Margin="0,8,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <Label Grid.Row="0" Grid.Column="0" Content="Redundancy:" VerticalContentAlignment="Center" Padding="0,2" />
+                                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                    <ComboBox x:Name="RedundancyCombo" Width="80" VerticalContentAlignment="Center" />
+                                    <TextBlock Text="%" VerticalAlignment="Center" Margin="6,0,0,0" />
+                                </StackPanel>
+
+                                <Label Grid.Row="4" Grid.Column="0" Content="PAR 2.0 file:" VerticalContentAlignment="Center" Padding="0,2" />
+                                <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                    <TextBox x:Name="ParNameBox" Width="200" HorizontalAlignment="Left" VerticalContentAlignment="Center" />
+                                    <TextBlock Text="(blank = &lt;folder&gt;.par2 in the source folder)" Foreground="Gray" VerticalAlignment="Center" Margin="10,0,0,0" FontSize="11" />
+                                </StackPanel>
+
+                                <Label Grid.Row="1" Grid.Column="0" Content="Block size:" VerticalContentAlignment="Center" Padding="0,2" />
+                                <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                    <ComboBox x:Name="BlockSizeModeCombo" Width="160" VerticalContentAlignment="Center" />
+                                    <TextBox x:Name="ManualBlockSizeBox" Width="60" Margin="10,0,0,0" VerticalContentAlignment="Center" IsEnabled="False" />
+                                    <TextBlock Text="KB" VerticalAlignment="Center" Margin="6,0,0,0" />
+                                </StackPanel>
+
+                                <Label Grid.Row="2" Grid.Column="0" Content="Recovery files:" VerticalContentAlignment="Center" Padding="0,2" />
+                                <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                    <ComboBox x:Name="RecFileCombo" Width="90" VerticalContentAlignment="Center" />
+                                    <TextBlock Text="scheme:" VerticalAlignment="Center" Margin="14,0,6,0" />
+                                    <ComboBox x:Name="SchemeCombo" Width="100" VerticalContentAlignment="Center" />
+                                </StackPanel>
+
+                                <Label Grid.Row="3" Grid.Column="0" Content="First recovery block:" VerticalContentAlignment="Center" Padding="0,2" />
+                                <TextBox x:Name="FirstBlockBox" Grid.Row="3" Grid.Column="1" Width="70" HorizontalAlignment="Left" VerticalContentAlignment="Center" Text="0" />
+                            </Grid>
+                        </GroupBox>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <Button x:Name="CreateBtn" Content="Create recovery volumes" MinWidth="190" FontWeight="Bold" Click="CreateClick" />
+                        </StackPanel>
+
+                        <TextBlock x:Name="OutDirText" Foreground="Gray" Margin="0,10,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ================= VERIFY & REPAIR ================= -->
+            <TabItem Header="Verify &amp; Repair">
+                <StackPanel Margin="12">
+                    <GroupBox Header="PAR 2.0 file" Padding="8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="ParBox" Grid.Column="0" VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                            <Button Grid.Column="1" Content="Browse…" Click="BrowseParClick" />
+                        </Grid>
+                    </GroupBox>
+                    <TextBlock x:Name="VerifyDirText" Foreground="Gray" Margin="2,6,0,8" />
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,10">
+                        <Button Content="Verify only" Click="VerifyClick" />
+                        <Button Content="Verify &amp; repair" MinWidth="140" FontWeight="Bold" Click="RepairClick" />
+                    </StackPanel>
+                    <GroupBox Header="Report" Padding="8">
+                        <ListBox x:Name="VerifyList" MinHeight="160" HorizontalContentAlignment="Stretch" />
+                    </GroupBox>
+                </StackPanel>
+            </TabItem>
+
+            <!-- ================= MONITOR ================= -->
+            <TabItem Header="Monitor">
+                <StackPanel Margin="12">
+                    <GroupBox Header="Watched directory" Padding="8">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="MonDirBox" Grid.Column="0" VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                                <Button Grid.Column="1" Content="Browse…" Click="BrowseMonClick" />
+                            </Grid>
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <TextBlock Text="Scan every" VerticalAlignment="Center" />
+                                <TextBox x:Name="MonIntervalBox" Width="46" Margin="8,0" VerticalContentAlignment="Center" Text="5" />
+                                <TextBlock Text="seconds, and start repair once at least" VerticalAlignment="Center" />
+                                <TextBox x:Name="MonThresholdBox" Width="46" Margin="8,0" VerticalContentAlignment="Center" Text="100" />
+                                <TextBlock Text="% of the set's recovery data is present" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </StackPanel>
+                    </GroupBox>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,8">
+                        <Button x:Name="MonStartBtn" Content="Start monitor" MinWidth="130" FontWeight="Bold" Click="MonStartClick" />
+                        <Button x:Name="MonStopBtn" Content="Stop monitor" IsEnabled="False" Click="MonStopClick" />
+                    </StackPanel>
+                    <GroupBox Header="Activity" Padding="8">
+                        <ListBox x:Name="MonList" MinHeight="190" HorizontalContentAlignment="Stretch" />
+                    </GroupBox>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+
+        <!-- Status bar -->
+        <Border Grid.Row="2" Background="#EEF2F6" BorderBrush="#C8D2DC" BorderThickness="0,1,0,0" Padding="10,5">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="StatusText" Grid.Column="0" Text="Ready." VerticalAlignment="Center" />
+                <Button x:Name="CancelBtn" Grid.Column="1" Content="Stop" IsEnabled="False" MinWidth="70" Margin="0,0,0,0" Click="CancelClick" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

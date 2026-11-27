@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Par2.App</RootNamespace>
+    <AssemblyName>parpar</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Allows cross-compiling this WPF app from non-Windows CI/dev machines. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Version>1.0.0</Version>
+    <Product>ParPar</Product>
+    <Description>PAR 2.0 recovery volume creator, repairer and monitored-directory auto-repair</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Par2.Core\Par2.Core.csproj" />
+  </ItemGroup>
+
+</Project>
