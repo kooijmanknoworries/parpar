@@ -51,6 +51,26 @@ public static class Galois16
     }
 
     /// <summary>
+    /// The discrete log of <paramref name="a"/> (a must be non-zero). Lets a
+    /// caller hoist <c>Log[factor]</c> out of a hot loop and reuse it with
+    /// <see cref="MultiplyByLog"/>.
+    /// </summary>
+    public static int LogOf(int a) => Log[a];
+
+    /// <summary>
+    /// Field multiply where the second operand is supplied as its log
+    /// (<paramref name="logB"/> = <see cref="LogOf"/> of that operand).
+    /// Returns 0 when <paramref name="a"/> is 0.
+    /// </summary>
+    public static int MultiplyByLog(int a, int logB)
+    {
+        if (a == 0)
+            return 0;
+        int sum = Log[a] + logB;
+        return sum >= Limit ? ALog[sum - Limit] : ALog[sum];
+    }
+
+    /// <summary>
     /// Field power a^e (e up to 65535). 0^0 is treated as 1, 0^n (n>0) as 0.
     /// </summary>
     public static int Pow(int a, int e)
