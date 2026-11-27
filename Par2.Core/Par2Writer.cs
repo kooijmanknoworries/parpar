@@ -261,7 +261,6 @@ public static class Par2Writer
             }
         }
 
-        int words = (int)blockSize / 2;
         for (int g = 0; g < total; g++)
         {
             ct.ThrowIfCancellationRequested();
@@ -271,12 +270,15 @@ public static class Par2Writer
             await ReadBlockZeroPaddedAsync(files[f], b, blockSize, block, ct);
 
             int baseValue = Galois16.BlockBase(g);
-            for (int r = 0; r < recoveryBlockCount; r++)
+            // Each recovery[r] is an independent accumulator, so the recovery
+            // blocks can be processed in parallel. (Parallelising over source
+            // blocks g would race, since several g's add into the same buffer.)
+            Parallel.For(0, recoveryBlockCount, r =>
             {
                 int factor = Galois16.Pow(baseValue, firstRecoveryBlock + r);
                 if (factor != 0)
                     ReedSolomon.AddMultiply(recovery[r], (int)blockSize, block, factor);
-            }
+            });
         }
         return recovery;
     }
