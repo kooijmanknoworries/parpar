@@ -64,7 +64,6 @@ public sealed class Par2Monitor
         public bool Attempted;
         public string? Fingerprint;
         public string? Announced;
-        public bool Removed;
     }
 
     private readonly string _directory;
@@ -174,7 +173,7 @@ public sealed class Par2Monitor
                 incomplete++;
         }
 
-        string summary = $"Scan: {scan.Unreadable.Count + parFiles} .par2 file(s) found; " +
+        string summary = $"Scan: {parFiles} .par2 file(s) found; " +
                          $"{complete} set(s) ready, {incomplete} set(s) waiting for more recovery data, " +
                          $"{noMain} set(s) without a main packet yet.";
         if (_lastSummary != summary)
@@ -299,7 +298,6 @@ public sealed class Par2Monitor
     {
         if (!_opt.RemoveParFilesAfterRepair)
             return;
-        state.Removed = true;
         state.Announced = null; // re-announce if the set reappears
         int removed = 0;
         foreach (var file in set.Files.Distinct(StringComparer.OrdinalIgnoreCase))
