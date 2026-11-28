@@ -43,9 +43,25 @@ Build and run the GUI on Windows:
 
 ```sh
 dotnet run --project Par2.App
-# or produce a runnable app:
-dotnet publish Par2.App -c Release -r win-x64
 ```
+
+### Distributing the GUI
+
+Use `publish.ps1` (Windows, PowerShell) to produce a shippable `parpar.exe`:
+
+```powershell
+pwsh ./publish.ps1                      # zero-install: standalone parpar.exe -> dist\
+pwsh ./publish.ps1 -FrameworkDependent  # tiny exe, needs the .NET 8 Desktop Runtime
+```
+
+* **Default (zero-install):** a self-contained, single-file, compressed `parpar.exe`
+  with the .NET runtime and native libraries embedded. It runs on any Windows 10/11
+  x64 machine with **nothing installed** — no .NET, no admin prompt (~68 MB).
+* **`-FrameworkDependent`:** a tiny `parpar.exe` (~0.3 MB) that instead requires the
+  [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) on the
+  target machine.
+
+(Trimming is not used — the .NET SDK does not support trimming WPF apps.)
 
 ## Build & test
 
