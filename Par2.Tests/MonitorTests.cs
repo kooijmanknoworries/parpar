@@ -26,42 +26,55 @@ public class MonitorTests : IDisposable
         File.WriteAllBytes(Path.Combine(dir, name), data);
     }
 
-    [Fact]
-    public async Task RepairsSetOnceEnoughRecoveryArrives()
+    private static byte[] WithDamagedBlocks(byte[] original, int blockSize, params int[] blockIndexes)
     {
-        // Create data + a full recovery set, then hide some recovery volumes so
-        // the set is initially incomplete, and reveal them so repair succeeds.
+        var damaged = (byte[])original.Clone();
+        foreach (int b in blockIndexes)
+        {
+            int pos = b * blockSize + blockSize / 2;
+            if (pos < damaged.Length)
+            {
+                damaged[pos] ^= 0xFF;
+                damaged[(pos + 1) % damaged.Length] ^= 0x55;
+            }
+        }
+        return damaged;
+    }
+
+    [Fact]
+    public async Task RepairsSetOnlyWhenAtLeastAsManyRecoveryBlocksAsMissingBlocks()
+    {
+        // Two blocks damaged; with only 1 of 8 recovery blocks present the set
+        // cannot be repaired yet, so the monitor waits. Once the rest arrive it
+        // repairs.
         string dataName = "data.bin";
         MakeFile(_dir, dataName, 2000, 1);
         var dataFile = Path.Combine(_dir, dataName);
         var dataBackup = File.ReadAllBytes(dataFile);
 
-        // Create a set with 8 recovery blocks in 8 files so each volume holds 1.
         var opt = new CreateOptions { BlockSize = 64, RecoveryBlockCount = 8, RecoveryFileCount = 8, Quiet = true, Log = _ => { } };
-        var result = await Par2Writer.CreateAsync(opt, Path.Combine(_dir, "set.par2"), new[] { dataFile });
+        await Par2Writer.CreateAsync(opt, Path.Combine(_dir, "set.par2"), new[] { dataFile });
 
-        // Hide every recovery volume except the first, so only 1/8 blocks present.
         var allPar2 = Directory.GetFiles(_dir, "*.par2").OrderBy(x => x).ToList();
         var hide = allPar2.Where(f => f != Path.Combine(_dir, "set.par2")).ToList();
-        foreach (var f in hide)
+        // Keep only the first recovery volume, hide the other seven.
+        foreach (var f in hide.Skip(1))
             File.Move(f, f + ".hidden");
 
-        // Damage the data file.
-        var damaged = (byte[])dataBackup.Clone();
-        damaged[100] = 0xFF; damaged[101] = 0x55;
-        File.WriteAllBytes(dataFile, damaged);
+        // Damage two distinct blocks so two recovery blocks are required.
+        File.WriteAllBytes(dataFile, WithDamagedBlocks(dataBackup, 64, 3, 17));
 
         var log = new List<string>();
-        var mon = new Par2Monitor(_dir, new MonitorOptions { ThresholdPercent = 100, Log = log.Add });
+        var mon = new Par2Monitor(_dir, new MonitorOptions { Log = log.Add });
         await mon.RunOnceAsync();
 
-        // Not enough recovery yet -> should not have repaired.
         var afterFirst = File.ReadAllBytes(dataFile);
-        Assert.NotEqual(dataBackup, afterFirst); // still damaged
+        Assert.NotEqual(dataBackup, afterFirst);             // still damaged
         Assert.DoesNotContain(log, l => l.Contains("repaired"));
+        Assert.Contains(log, l => l.Contains("not enough recovery blocks"));
 
         // Reveal all recovery volumes.
-        foreach (var f in hide)
+        foreach (var f in hide.Skip(1))
             File.Move(f + ".hidden", f);
 
         await mon.RunOnceAsync();
@@ -71,41 +84,44 @@ public class MonitorTests : IDisposable
     }
 
     [Fact]
-    public async Task DoesNotRepairUntilThresholdReached()
+    public async Task MovesOnToNextSetWhenOneNeedsMoreRecovery()
     {
-        string dataName = "data.bin";
-        MakeFile(_dir, dataName, 1200, 7);
-        var dataFile = Path.Combine(_dir, dataName);
-        var backup = File.ReadAllBytes(dataFile);
+        // Set A is damaged but short on recovery; set B is damaged and has all
+        // its recovery. The monitor must repair B in the same pass and leave A
+        // for later — it never blocks on A.
+        var optA = new CreateOptions { BlockSize = 64, RecoveryBlockCount = 4, RecoveryFileCount = 4, Quiet = true, Log = _ => { } };
+        var optB = new CreateOptions { BlockSize = 64, RecoveryBlockCount = 4, RecoveryFileCount = 4, Quiet = true, Log = _ => { } };
 
-        var opt = new CreateOptions { BlockSize = 64, RecoveryBlockCount = 4, RecoveryFileCount = 4, Quiet = true, Log = _ => { } };
-        await Par2Writer.CreateAsync(opt, Path.Combine(_dir, "set.par2"), new[] { dataFile });
+        MakeFile(_dir, "a.bin", 1200, 5);
+        MakeFile(_dir, "b.bin", 1200, 6);
+        var aFile = Path.Combine(_dir, "a.bin");
+        var bFile = Path.Combine(_dir, "b.bin");
+        var aBackup = File.ReadAllBytes(aFile);
+        var bBackup = File.ReadAllBytes(bFile);
 
-        var allPar2 = Directory.GetFiles(_dir, "*.par2").OrderBy(x => x).ToList();
-        var hide = allPar2.Where(f => f != Path.Combine(_dir, "set.par2")).ToList();
-        // Keep only 2 of the 4 recovery volumes.
-        foreach (var f in hide.Take(2))
+        await Par2Writer.CreateAsync(optA, Path.Combine(_dir, "a.par2"), new[] { aFile });
+        await Par2Writer.CreateAsync(optB, Path.Combine(_dir, "b.par2"), new[] { bFile });
+
+        // Set A: damage 3 blocks but keep only 2 of its 4 recovery volumes.
+        File.WriteAllBytes(aFile, WithDamagedBlocks(aBackup, 64, 2, 9, 15));
+        var aVolumes = Directory.GetFiles(_dir, "*.par2")
+            .Where(f => !f.EndsWith("a.par2", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x).ToList();
+        foreach (var f in aVolumes.Take(2))
             File.Move(f, f + ".hidden");
 
-        var damaged = (byte[])backup.Clone();
-        damaged[50] ^= 0xAA;
-        File.WriteAllBytes(dataFile, damaged);
+        // Set B: damage 2 blocks, all recovery present.
+        File.WriteAllBytes(bFile, WithDamagedBlocks(bBackup, 64, 4, 11));
 
         var log = new List<string>();
-        var mon = new Par2Monitor(_dir, new MonitorOptions { ThresholdPercent = 100, Log = log.Add });
+        var mon = new Par2Monitor(_dir, new MonitorOptions { Log = log.Add });
         await mon.RunOnceAsync();
 
-        // Only 2/4 present -> no repair yet.
-        var now = File.ReadAllBytes(dataFile);
-        Assert.NotEqual(backup, now);
-        Assert.DoesNotContain(log, l => l.Contains("repaired"));
-
-        // Reveal the rest.
-        foreach (var f in hide.Take(2))
-            File.Move(f + ".hidden", f);
-        await mon.RunOnceAsync();
-
-        Assert.Equal(backup, File.ReadAllBytes(dataFile));
+        // B was repaired and its .par2 files removed; A was left for later.
+        Assert.Equal(bBackup, File.ReadAllBytes(bFile));
+        Assert.NotEqual(aBackup, File.ReadAllBytes(aFile));
+        Assert.Contains(log, l => l.Contains("not enough recovery blocks"));
+        Assert.True(File.Exists(aFile));
     }
 
     [Fact]
@@ -117,7 +133,7 @@ public class MonitorTests : IDisposable
 
         int repairReports = 0;
         Action<string> log = s => { if (s.Contains("verified OK") || s.Contains("repaired")) repairReports++; };
-        var mon = new Par2Monitor(_dir, new MonitorOptions { ThresholdPercent = 100, Log = log });
+        var mon = new Par2Monitor(_dir, new MonitorOptions { Log = log });
 
         await mon.RunOnceAsync();
         await mon.RunOnceAsync();
@@ -139,7 +155,7 @@ public class MonitorTests : IDisposable
         var unrelated = Path.Combine(_dir, "app.log");
         int repairReports = 0;
         Action<string> log = s => { if (s.Contains("verified OK") || s.Contains("repaired")) repairReports++; };
-        var mon = new Par2Monitor(_dir, new MonitorOptions { ThresholdPercent = 100, Log = log });
+        var mon = new Par2Monitor(_dir, new MonitorOptions { Log = log });
 
         await mon.RunOnceAsync(); // first process
         int afterFirst = repairReports;

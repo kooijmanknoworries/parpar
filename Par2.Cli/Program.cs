@@ -74,14 +74,6 @@ internal static class Program
                         opt.IntervalSeconds = (int)n;
                         break;
                     }
-                    case 'p':
-                    {
-                        long n = ParseNumber(a, 2, out bool ok);
-                        if (!ok) { Error("Invalid threshold option; expected -p<percent>."); return 1; }
-                        if (n < 1 || n > 100) { Error("Threshold percent must be between 1 and 100."); return 1; }
-                        opt.ThresholdPercent = (int)n;
-                        break;
-                    }
                     case 'k':
                         opt.RemoveParFilesAfterRepair = false;
                         break;
@@ -412,13 +404,13 @@ Create options:
 
 Monitor options:
   -t<number>          Seconds between scans (default 5)
-  -p<number>          Minimum percent of recovery blocks (1-100, default 100)
-                      that must be present before a repair is attempted.
-                      The expected count is the highest recovery exponent seen
-                      plus one, so it grows as more recovery files arrive.
   -k                  Keep the set's .par2 files after a successful repair
                       (by default they are deleted once the set is verified
                       or repaired).
+                      A set is repaired as soon as enough recovery blocks are
+                      present; a set that is still incomplete is checked again
+                      on later scans, and the monitor moves on to the next set
+                      in the meantime (no percentage setting).
 
 If [files] are not given, the current directory is scanned for non-.par2 files.");
     }

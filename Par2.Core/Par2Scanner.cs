@@ -173,6 +173,24 @@ public static class Par2Scanner
             return;
         }
 
+        // If the file grows while we are scanning it, it is almost certainly
+        // still being written (a downloader in progress). That is normal and
+        // expected while monitoring: the intact blocks read so far are kept,
+        // and the file will be complete on a later scan. The message below is
+        // deliberately independent of the offset so it is not re-announced on
+        // every scan while the download proceeds.
+        void NoteFail(long offset, string reason)
+        {
+            if (fs.Length != length)
+            {
+                unreadable.Add(new UnreadableFile(path, "still being written (file grew while scanning); will retry on a later scan"));
+            }
+            else
+            {
+                unreadable.Add(new UnreadableFile(path, $"{reason} at offset {offset}"));
+            }
+        }
+
         string setId = "";
         long offset = 0;
         while (offset + Par2Format.HeaderSize <= fs.Length)
@@ -180,7 +198,7 @@ public static class Par2Scanner
             var header = new byte[Par2Format.HeaderSize];
             if (!ReadExact(fs, header, header.Length))
             {
-                unreadable.Add(new UnreadableFile(path, $"stopped at offset {offset}: file changed"));
+                NoteFail(offset, "could not read full packet header");
                 return;
             }
             if (!Par2Packet.TryParseHeader(header, (ulong)(fs.Length - offset), out var kind, out ulong packetLength))
@@ -188,9 +206,9 @@ public static class Par2Scanner
                 bool magicOk = true;
                 for (int i = 0; i < 8; i++)
                     if (header[i] != Par2Format.Magic[i]) { magicOk = false; break; }
-                unreadable.Add(new UnreadableFile(path, magicOk
-                    ? $"stopped at offset {offset}: damaged or truncated packet"
-                    : $"stopped at offset {offset}: packet not recognisable"));
+                NoteFail(offset, magicOk
+                    ? "damaged or truncated packet"
+                    : "packet not recognisable");
                 return;
             }
 
@@ -208,19 +226,19 @@ public static class Par2Scanner
                 var exp4 = new byte[4];
                 if (body < 4 || !ReadExact(fs, exp4, 4))
                 {
-                    unreadable.Add(new UnreadableFile(path, $"stopped at offset {offset}: truncated recovery packet"));
+                    NoteFail(offset, "truncated recovery packet");
                     return;
                 }
                 int exponent = BitConverter.ToInt32(exp4, 0);
                 if (exponent < 0)
                 {
-                    unreadable.Add(new UnreadableFile(path, $"stopped at offset {offset}: invalid recovery exponent"));
+                    NoteFail(offset, "invalid recovery exponent");
                     return;
                 }
                 ctx.Update(exp4);
                 if (!HashAndSkip(fs, ctx, body - 4))
                 {
-                    unreadable.Add(new UnreadableFile(path, $"stopped at offset {offset}: truncated recovery packet"));
+                    NoteFail(offset, "truncated recovery packet");
                     return;
                 }
                 blockRef = new RecoveryBlockRef(exponent, path, offset + Par2Format.HeaderSize + 4, (int)(packetLength - Par2Format.HeaderSize - 4));
@@ -233,7 +251,7 @@ public static class Par2Scanner
                 var rest = new byte[(int)body];
                 if (!ReadExact(fs, rest, rest.Length))
                 {
-                    unreadable.Add(new UnreadableFile(path, $"stopped at offset {offset}: truncated packet"));
+                    NoteFail(offset, "truncated packet");
                     return;
                 }
                 ctx.Update(rest);
@@ -243,7 +261,7 @@ public static class Par2Scanner
                 packet = Par2Packet.TryParse(full, 0, full.Length);
                 if (packet == null)
                 {
-                    unreadable.Add(new UnreadableFile(path, $"stopped at offset {offset}: damaged packet"));
+                    NoteFail(offset, "damaged packet");
                     return;
                 }
             }
@@ -252,7 +270,7 @@ public static class Par2Scanner
             var stored = new Md5Hash(header[Par2Format.HashOffset..(Par2Format.HashOffset + 16)]);
             if (!expected.Equals(stored))
             {
-                unreadable.Add(new UnreadableFile(path, $"stopped at offset {offset}: packet hash mismatch (damaged)"));
+                NoteFail(offset, "packet hash mismatch");
                 return;
             }
 

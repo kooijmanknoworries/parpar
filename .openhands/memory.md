@@ -1,11 +1,16 @@
 # ParPar — project memory
 
 ## Status
-- **v1.1.0 released 2026-11-28** (monitor rework):
+- **v1.1.1 released 2026-11-28** (monitor: removed the percentage threshold):
+  https://github.com/kooijmanknoworries/parpar/releases/tag/v1.1.1
+  — asset `parpar-1.1.1-win-x64.exe`. A set is now checked on every scan (when
+  its state changed): repair if enough recovery is present, else log
+  "not enough recovery blocks" and move on to the next set. No % setting.
+  Activity log auto-scrolls; Monitor tab scrolls; "still being written" scan
+  message for in-progress downloads. Verified on the VM: complete set repaired
+  byte-identical + .par2 deleted, incomplete set left waiting.
+- v1.1.0 released 2026-11-28 (monitor rework):
   https://github.com/kooijmanknoworries/parpar/releases/tag/v1.1.0
-  — asset `parpar-1.1.0-win-x64.exe` (71.7 MB, self-contained single-file,
-  zero-install), tag v1.1.0 == commit 3b06634 (== main).
-  Exe smoke-tested on the VM (GUI opens and stays alive).
 - v1.0.0 release: https://github.com/kooijmanknoworries/parpar/releases/tag/v1.0.0
   (tag v1.0.0 == commit 36e95f7).
 - Build: 0 warnings / 0 errors. Tests: 30/30 passing.
@@ -55,6 +60,11 @@ could not be completed — hence "memory growth + nothing happens". Rewritten:
   Setup installer if the user wants one.
 - Standing preference (user, 2026-11-28): for apps, ALWAYS commit + push +
   cut a release when work is done. Don't wait to be asked.
+- User's mental model for the monitor (v1.1.1): it should behave like quickpar
+  monitor — attempt each set, say "not enough recovery blocks" when short,
+  move on to the next set, revisit later; NEVER require a percentage and never
+  block on one set. In-progress downloads are normal ("still being written"),
+  not damage.
 
 ## Notes
 - **Interop fixture data**: `Par2.Tests/TestData/*.par2` + `alpha.bin`/`beta.bin`

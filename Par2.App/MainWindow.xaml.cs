@@ -80,7 +80,6 @@ public partial class MainWindow : Window
         // Monitor
         MonDirBox.Text = s.MonitorDirectory;
         MonIntervalBox.Text = s.MonitorIntervalSeconds.ToString();
-        MonThresholdBox.Text = s.MonitorThresholdPercent.ToString();
         MonRemoveParCheck.IsChecked = s.MonitorRemoveParFilesAfterRepair;
     }
 
@@ -115,8 +114,6 @@ public partial class MainWindow : Window
         s.MonitorDirectory = MonDirBox.Text.Trim();
         if (int.TryParse(MonIntervalBox.Text.Trim(), out int iv) && iv > 0)
             s.MonitorIntervalSeconds = iv;
-        if (int.TryParse(MonThresholdBox.Text.Trim(), out int tp) && tp is >= 1 and <= 100)
-            s.MonitorThresholdPercent = tp;
         s.MonitorRemoveParFilesAfterRepair = MonRemoveParCheck.IsChecked == true;
 
         s.Save();
@@ -360,15 +357,13 @@ public partial class MainWindow : Window
         }
 
         int interval = int.TryParse(MonIntervalBox.Text.Trim(), out int iv) ? Math.Max(1, iv) : 5;
-        int threshold = int.TryParse(MonThresholdBox.Text.Trim(), out int tp) ? Math.Clamp(tp, 1, 100) : 100;
 
         var opts = new MonitorOptions
         {
             IntervalSeconds = interval,
-            ThresholdPercent = threshold,
             Quiet = false,
             RemoveParFilesAfterRepair = MonRemoveParCheck.IsChecked == true,
-            Log = msg => Dispatcher.Invoke(() => MonList.Items.Add($"[{DateTime.Now:HH:mm:ss}] {msg}")),
+            Log = msg => Dispatcher.Invoke(() => AddMonitorLog(msg)),
             RepairProgress = prog => Dispatcher.Invoke(() => UpdateMonitorProgress(prog))
         };
 
@@ -383,13 +378,21 @@ public partial class MainWindow : Window
         MonStartBtn.IsEnabled = false;
         MonStopBtn.IsEnabled = true;
         CancelBtn.IsEnabled = true;
-        MonList.Items.Add($"[{DateTime.Now:HH:mm:ss}] Started monitoring '{dir}' every {interval}s, threshold {threshold}%.");
+        AddMonitorLog($"Started monitoring '{dir}' every {interval}s.");
+    }
+
+    /// <summary>Append a line to the activity log and keep the newest line visible.</summary>
+    private void AddMonitorLog(string message)
+    {
+        MonList.Items.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+        MonList.ScrollIntoView(MonList.Items[MonList.Items.Count - 1]);
+        MonList.SelectedItem = MonList.Items[MonList.Items.Count - 1];
     }
 
     private void MonStopClick(object sender, RoutedEventArgs e)
     {
         StopMonitorCore();
-        MonList.Items.Add($"[{DateTime.Now:HH:mm:ss}] Monitor stopped.");
+        AddMonitorLog("Monitor stopped.");
     }
 
     private void StopMonitorCore()

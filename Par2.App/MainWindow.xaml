@@ -129,43 +129,44 @@
 
             <!-- ================= MONITOR ================= -->
             <TabItem Header="Monitor">
-                <StackPanel Margin="12">
-                    <GroupBox Header="Watched directory" Padding="8">
-                        <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBox x:Name="MonDirBox" Grid.Column="0" VerticalContentAlignment="Center" Margin="0,0,8,0" />
-                                <Button Grid.Column="1" Content="Browse…" Click="BrowseMonClick" />
-                            </Grid>
-                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                <TextBlock Text="Scan every" VerticalAlignment="Center" />
-                                <TextBox x:Name="MonIntervalBox" Width="46" Margin="8,0" VerticalContentAlignment="Center" Text="5" />
-                                <TextBlock Text="seconds, and start repair once at least" VerticalAlignment="Center" />
-                                <TextBox x:Name="MonThresholdBox" Width="46" Margin="8,0" VerticalContentAlignment="Center" Text="100" />
-                                <TextBlock Text="% of the set's recovery data is present" VerticalAlignment="Center" />
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+                    <StackPanel>
+                        <GroupBox Header="Watched directory" Padding="8">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="MonDirBox" Grid.Column="0" VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                                    <Button Grid.Column="1" Content="Browse…" Click="BrowseMonClick" />
+                                </Grid>
+                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                    <TextBlock Text="Scan every" VerticalAlignment="Center" />
+                                    <TextBox x:Name="MonIntervalBox" Width="46" Margin="8,0" VerticalContentAlignment="Center" Text="5" />
+                                    <TextBlock Text="seconds" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock Foreground="Gray" TextWrapping="Wrap" Text="A set is repaired as soon as enough recovery blocks are present; sets that are still incomplete are checked again on every scan. No percentage setting needed." />
+                                <CheckBox x:Name="MonRemoveParCheck" Margin="0,10,0,0" IsChecked="True">
+                                    After a set is verified or repaired, delete its .par2 files
+                                </CheckBox>
                             </StackPanel>
-                            <CheckBox x:Name="MonRemoveParCheck" Margin="0,10,0,0" IsChecked="True">
-                                After a set is verified or repaired, delete its .par2 files
-                            </CheckBox>
+                        </GroupBox>
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,8">
+                            <Button x:Name="MonStartBtn" Content="Start monitor" MinWidth="130" FontWeight="Bold" Click="MonStartClick" />
+                            <Button x:Name="MonStopBtn" Content="Stop monitor" IsEnabled="False" Click="MonStopClick" />
                         </StackPanel>
-                    </GroupBox>
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,8">
-                        <Button x:Name="MonStartBtn" Content="Start monitor" MinWidth="130" FontWeight="Bold" Click="MonStartClick" />
-                        <Button x:Name="MonStopBtn" Content="Stop monitor" IsEnabled="False" Click="MonStopClick" />
+                        <GroupBox Header="Repair progress" Padding="8" Margin="0,0,0,8">
+                            <StackPanel>
+                                <ProgressBar x:Name="MonProgress" Height="20" Minimum="0" Maximum="100" />
+                                <TextBlock x:Name="MonProgressText" Foreground="Gray" Margin="0,4,0,0" Text="Idle — no set is being repaired." />
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="Activity (newest at the bottom)" Padding="8">
+                            <ListBox x:Name="MonList" Height="240" HorizontalContentAlignment="Stretch" />
+                        </GroupBox>
                     </StackPanel>
-                    <GroupBox Header="Repair progress" Padding="8" Margin="0,0,0,8">
-                        <StackPanel>
-                            <ProgressBar x:Name="MonProgress" Height="20" Minimum="0" Maximum="100" />
-                            <TextBlock x:Name="MonProgressText" Foreground="Gray" Margin="0,4,0,0" Text="Idle — no set is being repaired." />
-                        </StackPanel>
-                    </GroupBox>
-                    <GroupBox Header="Activity" Padding="8">
-                        <ListBox x:Name="MonList" MinHeight="190" HorizontalContentAlignment="Stretch" />
-                    </GroupBox>
-                </StackPanel>
+                </ScrollViewer>
             </TabItem>
         </TabControl>
 

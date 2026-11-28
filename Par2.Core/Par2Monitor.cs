@@ -14,15 +14,6 @@ public sealed class MonitorOptions
     public int IntervalSeconds { get; set; } = 5;
 
     /// <summary>
-    /// Minimum percentage of the set's recovery blocks that must be present
-    /// before repair is attempted. The expected count is the highest recovery
-    /// exponent seen in the set plus one, which grows as more recovery files
-    /// arrive. Default 100 (repair only when there are no gaps below the
-    /// highest exponent seen).
-    /// </summary>
-    public int ThresholdPercent { get; set; } = 100;
-
-    /// <summary>
     /// After a set's files are verified intact or fully repaired, delete the
     /// set's .par2 files so the download folder does not fill up. Default
     /// true.
@@ -50,12 +41,13 @@ public sealed class MonitorOptions
 /// Watches a directory for PAR 2.0 recovery sets and automatically starts a
 /// repair as soon as a set has enough recovery data.
 ///
-/// Sets are processed one at a time, in order: each scan reports what it
-/// found, each set reports its state (waiting, incomplete, repairing), and a
-/// repair runs only when enough recovery blocks are present and something
-/// changed since the last attempt. When a set is verified or repaired, its
-/// .par2 files are removed (unless <see cref="MonitorOptions.RemoveParFilesAfterRepair"/>
-/// is off), then the monitor moves on to the next set.
+/// Sets are processed one at a time, in order. A repair is attempted for each
+/// set that is ready to be checked; if the set's files need repair but there
+/// are not enough recovery blocks, the monitor says so and simply moves on to
+/// the next set — it never blocks on one incomplete set. A set that still
+/// needs repair is revisited on later scans as recovery files arrive. When a
+/// set is verified or repaired, its .par2 files are removed (unless
+/// <see cref="MonitorOptions.RemoveParFilesAfterRepair"/> is off).
 /// </summary>
 public sealed class Par2Monitor
 {
@@ -82,7 +74,7 @@ public sealed class Par2Monitor
     public async Task MonitorAsync(CancellationToken ct = default)
     {
         _opt.Report($"Watching '{_directory}' every {Math.Max(1, _opt.IntervalSeconds)}s; " +
-                    $"repairing sets once >= {_opt.ThresholdPercent}% of recovery blocks are present.");
+                    $"repairing sets as soon as enough recovery blocks are present (sets that are still incomplete are revisited on later scans).");
         while (!ct.IsCancellationRequested)
         {
             try
@@ -156,25 +148,20 @@ public sealed class Par2Monitor
         int parFiles = scan.Sets.SelectMany(s => s.Files).Distinct(StringComparer.OrdinalIgnoreCase).Count()
                          + scan.Unreadable.Count;
 
-        int complete = 0, incomplete = 0, noMain = 0;
+        int ready = 0, noMain = 0, noRecovery = 0;
         foreach (var set in scan.Sets)
         {
             if (!set.HasMain)
-            {
                 noMain++;
-                continue;
-            }
-            int available = set.Recovery.Count;
-            int expected = set.RecoveryBlockCount;
-            int required = Math.Max(1, (int)Math.Ceiling(expected * _opt.ThresholdPercent / 100.0));
-            if (available >= required)
-                complete++;
+            else if (set.Recovery.Count == 0)
+                noRecovery++;
             else
-                incomplete++;
+                ready++;
         }
 
         string summary = $"Scan: {parFiles} .par2 file(s) found; " +
-                         $"{complete} set(s) ready, {incomplete} set(s) waiting for more recovery data, " +
+                         $"{ready} set(s) with main packet and recovery data, " +
+                         $"{noRecovery} set(s) without recovery data yet, " +
                          $"{noMain} set(s) without a main packet yet.";
         if (_lastSummary != summary)
         {
@@ -213,31 +200,18 @@ public sealed class Par2Monitor
             return;
         }
 
-        int available = set.Recovery.Count;
-        int expected = set.RecoveryBlockCount;
-
-        if (available == 0 || expected <= 0)
+        if (set.Recovery.Count == 0)
         {
             Announce(GetState(set.SetId), "none", $"set {ShortId(set.SetId)}: no recovery data yet");
             return;
         }
 
-        int required = (int)Math.Ceiling(expected * _opt.ThresholdPercent / 100.0);
-        if (required < 1)
-            required = 1;
-
         var state = GetState(set.SetId);
 
-        if (available < required)
-        {
-            Announce(state, $"{available}/{expected}",
-                $"set {ShortId(set.SetId)}: recovery data incomplete ({available}/{expected} blocks; " +
-                $"{required} needed for the {_opt.ThresholdPercent}% threshold)");
-            return;
-        }
-
-        // Enough recovery data: attempt repair only when something changed
-        // since the last attempt (or this is the first attempt).
+        // Check the set only when something changed since the last attempt
+        // (recovery blocks arrived, a source file was modified, ...). A set
+        // that still needs repair is simply revisited on the next scan where
+        // its state changed; the monitor never waits on it.
         string fingerprint = ComputeFingerprint(set);
         if (state.Attempted && state.Fingerprint == fingerprint)
             return;
@@ -281,10 +255,10 @@ public sealed class Par2Monitor
                 _opt.Report($"set {ShortId(set.SetId)}: {report.Message}");
                 MaybeRemoveParFiles(set, state, verified: false);
                 break;
-            case RepairStatus.NoFiles:
-                _opt.Report($"set {ShortId(set.SetId)}: {report.Message}");
-                break;
             case RepairStatus.NotEnoughRecovery:
+                _opt.Report($"set {ShortId(set.SetId)}: not enough recovery blocks yet ({report.RecoveryBlocksAvailable} available, {report.MissingBlocks} missing); moving on and waiting for more .par2 files");
+                break;
+            case RepairStatus.NoFiles:
                 _opt.Report($"set {ShortId(set.SetId)}: {report.Message}");
                 break;
             default:
