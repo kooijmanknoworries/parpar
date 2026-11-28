@@ -1,9 +1,12 @@
 # ParPar — project memory
 
 ## Status
-- v1.0.0 released 2026-11-28 (see below). **Monitor rework done, not yet released**
-  (v1.1.0 pending — user has not asked to release it yet).
-  v1.0.0 release: https://github.com/kooijmanknoworries/parpar/releases/tag/v1.0.0
+- **v1.1.0 released 2026-11-28** (monitor rework):
+  https://github.com/kooijmanknoworries/parpar/releases/tag/v1.1.0
+  — asset `parpar-1.1.0-win-x64.exe` (71.7 MB, self-contained single-file,
+  zero-install), tag v1.1.0 == commit 3b06634 (== main).
+  Exe smoke-tested on the VM (GUI opens and stays alive).
+- v1.0.0 release: https://github.com/kooijmanknoworries/parpar/releases/tag/v1.0.0
   (tag v1.0.0 == commit 36e95f7).
 - Build: 0 warnings / 0 errors. Tests: 30/30 passing.
 - Exe tested on the Windows 11 VM: GUI window opens, stays alive, no runtime
@@ -47,11 +50,11 @@ could not be completed — hence "memory growth + nothing happens". Rewritten:
   net8.0-windows.
 
 ## Open
-- Monitor rework pushed to main (commits 78cc2fe, 93700d6, 2026-11-28).
-  Cut v1.1.0 when the user asks (same release recipe as v1.0.0).
-  Possible future: code-signing (currently unsigned; Windows Smart
+- None known. Possible future: code-signing (currently unsigned; Windows Smart
   Screen will warn on first run until reputation builds), and a `.zip`/Inno
   Setup installer if the user wants one.
+- Standing preference (user, 2026-11-28): for apps, ALWAYS commit + push +
+  cut a release when work is done. Don't wait to be asked.
 
 ## Notes
 - **Interop fixture data**: `Par2.Tests/TestData/*.par2` + `alpha.bin`/`beta.bin`
@@ -69,8 +72,18 @@ could not be completed — hence "memory growth + nothing happens". Rewritten:
   (roll-forward needed: sandbox only has the .NET 10 runtime, tests target net8.0).
 - Publish (no pwsh in sandbox — run the equivalent of publish.ps1 directly):
   `dotnet publish Par2.App/Par2.App.csproj -c Release -r win-x64 -p:DebugType=none -p:PublishSingleFile=true --self-contained true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o dist`
-- Upload a release asset (GitHub API, token in the git remote URL):
-  `curl -X POST -H "Authorization: Bearer $TOK" -H "Content-Type: application/octet-stream" --data-binary @dist/parpar.exe "<upload_url>?name=parpar-1.0.0-win-x64.exe"`
+- GitHub API (create release + upload asset): use the **`$GITHUB_TOKEN`
+  environment variable** — the token embedded in the git remote URL does NOT
+  work against the API (401 "Bad credentials"; it's a git-clone-only PAT).
+  Create release: `curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H
+  "Accept: application/vnd.github+json"
+  https://api.github.com/repos/kooijmanknoworries/parpar/releases -d '{...}'`
+  then upload to the returned `upload_url` with
+  `-H "Content-Type: application/octet-stream" --data-binary @dist/parpar.exe`.
+- Release recipe (v1.1.0, 2026-11-28): publish to `dist/` (above) → smoke-test
+  the exe on the VM → `git tag vX.Y.Z && git push origin vX.Y.Z` → API release
+  → upload `parpar-X.Y.Z-win-x64.exe` → update this memory + /memory/projects.md
+  → commit + push the memory note.
 - Verify a GUI exe over SSH: `Start-Process -PassThru` reports MainWindowHandle=0
   (cross-session). Instead enumerate top-level windows by pid via user32
   EnumWindows + GetWindowThreadProcessId (see the vm_windowtest.ps1 pattern).
