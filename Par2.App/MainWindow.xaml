@@ -120,6 +120,7 @@
                         <Button Content="Verify only" Click="VerifyClick" />
                         <Button Content="Verify &amp; repair" MinWidth="140" FontWeight="Bold" Click="RepairClick" />
                     </StackPanel>
+                    <ProgressBar x:Name="VerifyProgress" Height="18" Minimum="0" Maximum="100" Margin="0,0,0,10" />
                     <GroupBox Header="Report" Padding="8">
                         <ListBox x:Name="VerifyList" MinHeight="160" HorizontalContentAlignment="Stretch" />
                     </GroupBox>
@@ -146,12 +147,21 @@
                                 <TextBox x:Name="MonThresholdBox" Width="46" Margin="8,0" VerticalContentAlignment="Center" Text="100" />
                                 <TextBlock Text="% of the set's recovery data is present" VerticalAlignment="Center" />
                             </StackPanel>
+                            <CheckBox x:Name="MonRemoveParCheck" Margin="0,10,0,0" IsChecked="True">
+                                After a set is verified or repaired, delete its .par2 files
+                            </CheckBox>
                         </StackPanel>
                     </GroupBox>
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,8">
                         <Button x:Name="MonStartBtn" Content="Start monitor" MinWidth="130" FontWeight="Bold" Click="MonStartClick" />
                         <Button x:Name="MonStopBtn" Content="Stop monitor" IsEnabled="False" Click="MonStopClick" />
                     </StackPanel>
+                    <GroupBox Header="Repair progress" Padding="8" Margin="0,0,0,8">
+                        <StackPanel>
+                            <ProgressBar x:Name="MonProgress" Height="20" Minimum="0" Maximum="100" />
+                            <TextBlock x:Name="MonProgressText" Foreground="Gray" Margin="0,4,0,0" Text="Idle — no set is being repaired." />
+                        </StackPanel>
+                    </GroupBox>
                     <GroupBox Header="Activity" Padding="8">
                         <ListBox x:Name="MonList" MinHeight="190" HorizontalContentAlignment="Stretch" />
                     </GroupBox>

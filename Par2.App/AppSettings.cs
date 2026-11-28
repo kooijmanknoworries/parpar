@@ -22,6 +22,7 @@ public sealed class AppSettings
     public string MonitorDirectory { get; set; } = "";
     public int MonitorIntervalSeconds { get; set; } = 5;
     public int MonitorThresholdPercent { get; set; } = 100;
+    public bool MonitorRemoveParFilesAfterRepair { get; set; } = true;
 
     public static string SettingsPath
     {

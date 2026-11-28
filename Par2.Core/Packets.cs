@@ -94,6 +94,27 @@ public sealed class Par2Packet
     public byte[] RecoveryData => Data[(Par2Format.RecoveryExponentOffset + 4)..];
 
     /// <summary>
+    /// Parse just the 64-byte packet header (magic, full length, type),
+    /// validating the length against the bytes available from the header.
+    /// Used by the streaming scanner to walk files without copying packets.
+    /// </summary>
+    public static bool TryParseHeader(ReadOnlySpan<byte> header64, ulong fileAvailable, out Par2PacketKind kind, out ulong length)
+    {
+        kind = Par2PacketKind.Unknown;
+        length = 0;
+        if (header64.Length < Par2Format.HeaderSize)
+            return false;
+        for (int i = 0; i < 8; i++)
+            if (header64[i] != Par2Format.Magic[i])
+                return false;
+        length = BitConverter.ToUInt64(header64[8..]);
+        if (length < Par2Format.HeaderSize || length > fileAvailable)
+            return false;
+        kind = ParseType(header64[Par2Format.TypeOffset..(Par2Format.TypeOffset + 16)]);
+        return true;
+    }
+
+    /// <summary>
     /// Parse a packet from a buffer that starts at the packet header.
     /// Returns null if the header does not look like a PAR 2 packet.
     /// </summary>

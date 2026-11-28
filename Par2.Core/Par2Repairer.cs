@@ -48,7 +48,12 @@ public sealed class Par2Repairer
             _log(message);
     }
 
-    public async Task<RepairReport> RunAsync(RecoverySet set, string baseDirectory, bool repair, CancellationToken ct = default)
+    /// <summary>
+    /// Run the repair. <paramref name="progress"/> (optional) is called with a
+    /// percentage 0-100 as the repair advances, so a UI can show a progress
+    /// bar for the set being repaired.
+    /// </summary>
+    public async Task<RepairReport> RunAsync(RecoverySet set, string baseDirectory, bool repair, CancellationToken ct = default, IProgress<int>? progress = null)
     {
         if (set.Main is not { } main)
             return new RepairReport(RepairStatus.Error, 0, 0, 0, set.Recovery.Count, Array.Empty<FileReport>(), "No main packet found for this set.");
@@ -98,7 +103,12 @@ public sealed class Par2Repairer
         }
 
         if (totalBlocks == 0)
+        {
+            if (reports.Count > 0 && set.Recovery.Count > 0)
+                return new RepairReport(RepairStatus.NoFiles, fileIds.Length, 0, 0, set.Recovery.Count, reports,
+                    "No source blocks could be matched yet (the downloaded files do not match this set's description); waiting for the download to settle.");
             return new RepairReport(RepairStatus.NoFiles, fileIds.Length, 0, 0, set.Recovery.Count, reports, "No source files could be associated with this set.");
+        }
 
         // Build the global arrays in main.FileIds order.
         var globalPresent = new bool[totalBlocks];
@@ -146,7 +156,7 @@ public sealed class Par2Repairer
         }
 
         // ---- Choose the lowest-missingCount recovery exponents ----
-        var chosen = set.Recovery.Keys.OrderBy(e => e).Take(missingCount).ToArray();
+        var chosen = set.Recovery.Keys.OrderBy(e => e).Take(missingCount).ToList();
 
         // ---- Build the RS matrix ----
         Log("Computing Reed Solomon matrix.");
@@ -158,8 +168,6 @@ public sealed class Par2Repairer
         if (!rs.Compute(out string? error))
             return new RepairReport(RepairStatus.NotRepairable, fileIds.Length, totalBlocks, missingCount, available, reports, error ?? "Reed Solomon failure.");
 
-        int presentData = globalPresent.Count(p => p);
-
         // ---- Allocate output buffers ----
         var outputs = new byte[missingCount][];
         for (int r = 0; r < missingCount; r++)
@@ -170,6 +178,12 @@ public sealed class Par2Repairer
         for (int g = 0; g < totalBlocks; g++)
             if (globalPresent[g])
                 presentGlobal.Add(g);
+
+        int totalInput = presentGlobal.Count + chosen.Count;
+        int progressBase = 10;
+        int progressSpan = 75; // data+recovery input fills 10..85; writing fills 85..100
+
+        ReportProgress(progress, 0, totalInput, progressBase, progressSpan, 1);
 
         Log("Repairing source blocks.");
         var inputBuf = new byte[blockSize];
@@ -186,15 +200,23 @@ public sealed class Par2Repairer
             await ReadBlockZeroPaddedAsync(pfPath, b, blockSize, inputBuf, ct);
             rs.Process((int)blockSize, inputIndex, inputBuf, outputs);
             inputIndex++;
+            ReportProgress(progress, inputIndex, totalInput, progressBase, progressSpan, 1);
         }
 
         foreach (int e in chosen)
         {
             ct.ThrowIfCancellationRequested();
-            var recData = set.Recovery[e];
-            Buffer.BlockCopy(recData, 0, inputBuf, 0, Math.Min(recData.Length, (int)blockSize));
-            rs.Process((int)blockSize, inputIndex, inputBuf, outputs);
+            // Recovery data is read from disk on demand (only the blocks this
+            // repair needs), never kept by the scanner.
+            byte[] recData = set.Recovery[e].ReadData();
+            if (recData.Length == 0)
+                return new RepairReport(RepairStatus.NotRepairable, fileIds.Length, totalBlocks, missingCount, available, reports,
+                    $"Recovery block {e} could not be read (its .par2 file changed or was removed); try again once the download settles.");
+            if (recData.Length > blockSize)
+                recData = recData[..(int)blockSize];
+            rs.Process((int)blockSize, inputIndex, recData, outputs);
             inputIndex++;
+            ReportProgress(progress, inputIndex, totalInput, progressBase, progressSpan, 1);
         }
 
         // ---- Write the reconstructed blocks back ----
@@ -223,11 +245,26 @@ public sealed class Par2Repairer
                 continue;
             await WriteBlockAsync(pfPath, offset, outputs[r], writeLen, ct);
             totalWritten += writeLen;
+            ReportProgress(progress, r + 1, missingCount, 85, 15, 0);
         }
 
+        ReportProgress(progress, 1, 1, 0, 0, 1); // 100
         Log($"Wrote {totalWritten} bytes to disk.");
         return new RepairReport(RepairStatus.Repaired, fileIds.Length, totalBlocks, missingCount, available, reports,
             $"Repaired {missingCount} block(s).");
+    }
+
+    /// <summary>Map done/total work units onto a percentage range of the bar.</summary>
+    private static void ReportProgress(IProgress<int>? progress, int done, int total, int basePercent, int spanPercent, int last)
+    {
+        if (progress == null || total <= 0)
+            return;
+        int percent = basePercent + (int)((long)done * spanPercent / total);
+        if (last == 1)
+            percent = basePercent + spanPercent;
+        if (percent > 100)
+            percent = 100;
+        progress.Report(percent);
     }
 
     private static string DescribeProblem((int Blocks, string? Path, bool Full, bool[] Present) f)

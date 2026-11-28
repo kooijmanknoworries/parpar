@@ -2,6 +2,12 @@ using System.Text;
 
 namespace Par2.Core;
 
+/// <summary>
+/// One repair in progress, for UI status bars: which set, which file of the
+/// set is being written, and the percentage of the set completed.
+/// </summary>
+public sealed record RepairProgress(string SetId, int Percent, string? CurrentFile);
+
 public sealed class MonitorOptions
 {
     /// <summary>Seconds between directory scans. Default 5.</summary>
@@ -16,9 +22,22 @@ public sealed class MonitorOptions
     /// </summary>
     public int ThresholdPercent { get; set; } = 100;
 
+    /// <summary>
+    /// After a set's files are verified intact or fully repaired, delete the
+    /// set's .par2 files so the download folder does not fill up. Default
+    /// true.
+    /// </summary>
+    public bool RemoveParFilesAfterRepair { get; set; } = true;
+
     public bool Quiet { get; set; }
 
     public Action<string>? Log { get; set; } = Console.WriteLine;
+
+    /// <summary>
+    /// Called with <see cref="null"/> when no set is being repaired and with
+    /// progress updates (percentage 0-100) while a set is repaired.
+    /// </summary>
+    public Action<RepairProgress?>? RepairProgress { get; set; }
 
     public void Report(string message, bool onlyWhenNotQuiet = false)
     {
@@ -31,16 +50,12 @@ public sealed class MonitorOptions
 /// Watches a directory for PAR 2.0 recovery sets and automatically starts a
 /// repair as soon as a set has enough recovery data.
 ///
-/// On every scan the directory is grouped into recovery sets (by set id).
-/// For each set with a main packet the monitor compares the number of
-/// recovery blocks present with the highest recovery exponent seen: once at
-/// least <see cref="MonitorOptions.ThresholdPercent"/> percent of those
-/// blocks are available, a repair of the set's source files (which are looked
-/// up in the same directory) is attempted.
-///
-/// A set is only re-processed when something changes (more recovery data
-/// arrives, or a data file appears, changes, or is re-damaged), so an intact
-/// or permanently unrecoverable set does not cause repeated work.
+/// Sets are processed one at a time, in order: each scan reports what it
+/// found, each set reports its state (waiting, incomplete, repairing), and a
+/// repair runs only when enough recovery blocks are present and something
+/// changed since the last attempt. When a set is verified or repaired, its
+/// .par2 files are removed (unless <see cref="MonitorOptions.RemoveParFilesAfterRepair"/>
+/// is off), then the monitor moves on to the next set.
 /// </summary>
 public sealed class Par2Monitor
 {
@@ -49,6 +64,7 @@ public sealed class Par2Monitor
         public bool Attempted;
         public string? Fingerprint;
         public string? Announced;
+        public bool Removed;
     }
 
     private readonly string _directory;
@@ -92,26 +108,79 @@ public sealed class Par2Monitor
                 break;
             }
         }
+        _opt.RepairProgress?.Invoke(null);
     }
 
     /// <summary>Run a single scan/repair cycle (returns when the scan is done).</summary>
     public async Task RunOnceAsync(CancellationToken ct = default)
     {
-        List<RecoverySet> sets;
-        try
+        var scan = Par2Scanner.ScanDirectory(_directory);
+
+        AnnounceScanSummary(scan);
+        foreach (var bad in scan.Unreadable)
         {
-            sets = Par2Scanner.ScanDirectory(_directory);
-        }
-        catch (Exception e)
-        {
-            _opt.Report($"Could not scan '{_directory}': {e.Message}");
-            return;
+            var key = Path.GetFileName(bad.Path);
+            var st = GetFileState(key);
+            if (st.Announced != bad.Reason)
+            {
+                st.Announced = bad.Reason;
+                _opt.Report($"'{key}' is not a usable PAR 2 file: {bad.Reason}");
+            }
         }
 
-        foreach (var set in sets)
+        foreach (var set in scan.Sets)
         {
             ct.ThrowIfCancellationRequested();
             await ProcessSetAsync(set, ct);
+        }
+    }
+
+    private readonly Dictionary<string, SetState> _fileState = new(StringComparer.OrdinalIgnoreCase);
+
+    private SetState GetFileState(string name)
+    {
+        if (!_fileState.TryGetValue(name, out var state))
+        {
+            state = new SetState();
+            _fileState[name] = state;
+        }
+        return state;
+    }
+
+    // One line per scan, logged only when the summary changes, so the user
+    // always sees what the monitor is looking at and why it is (or is not)
+    // waiting.
+    private string? _lastSummary;
+
+    private void AnnounceScanSummary(Par2Scanner.ScanResult scan)
+    {
+        int parFiles = scan.Sets.SelectMany(s => s.Files).Distinct(StringComparer.OrdinalIgnoreCase).Count()
+                         + scan.Unreadable.Count;
+
+        int complete = 0, incomplete = 0, noMain = 0;
+        foreach (var set in scan.Sets)
+        {
+            if (!set.HasMain)
+            {
+                noMain++;
+                continue;
+            }
+            int available = set.Recovery.Count;
+            int expected = set.RecoveryBlockCount;
+            int required = Math.Max(1, (int)Math.Ceiling(expected * _opt.ThresholdPercent / 100.0));
+            if (available >= required)
+                complete++;
+            else
+                incomplete++;
+        }
+
+        string summary = $"Scan: {scan.Unreadable.Count + parFiles} .par2 file(s) found; " +
+                         $"{complete} set(s) ready, {incomplete} set(s) waiting for more recovery data, " +
+                         $"{noMain} set(s) without a main packet yet.";
+        if (_lastSummary != summary)
+        {
+            _lastSummary = summary;
+            _opt.Report(summary);
         }
     }
 
@@ -138,7 +207,12 @@ public sealed class Par2Monitor
     private async Task ProcessSetAsync(RecoverySet set, CancellationToken ct)
     {
         if (!set.HasMain)
-            return; // no main packet: not a usable set yet
+        {
+            if (set.Recovery.Count > 0)
+                Announce(GetState(set.SetId), $"nomain/{set.Recovery.Count}",
+                    $"set {ShortId(set.SetId)}: has {set.Recovery.Count} recovery block(s) but no main packet yet; waiting for the set's main .par2 file");
+            return;
+        }
 
         int available = set.Recovery.Count;
         int expected = set.RecoveryBlockCount;
@@ -172,31 +246,44 @@ public sealed class Par2Monitor
         state.Attempted = true;
         state.Fingerprint = fingerprint;
 
+        // Only one set is repaired at a time, in order. The progress callback
+        // identifies the set and how far its repair has come, so the UI can
+        // show a progress bar that fills to 100% per set.
+        var progress = new Progress<int>(p =>
+            _opt.RepairProgress?.Invoke(new RepairProgress(set.SetId, p, null)));
+
         var repairer = new Par2Repairer(_opt.Log, _opt.Quiet);
         RepairReport report;
         try
         {
-            report = await repairer.RunAsync(set, _directory, repair: true, ct);
+            _opt.RepairProgress?.Invoke(new RepairProgress(set.SetId, 0, null));
+            report = await repairer.RunAsync(set, _directory, repair: true, ct, progress);
         }
         catch (Exception e)
         {
             _opt.Report($"set {ShortId(set.SetId)}: repair error: {e.Message}");
             return;
         }
+        finally
+        {
+            _opt.RepairProgress?.Invoke(null);
+        }
 
         switch (report.Status)
         {
             case RepairStatus.Ok:
                 _opt.Report($"set {ShortId(set.SetId)}: all {report.SourceFileCount} file(s) verified OK");
+                MaybeRemoveParFiles(set, state, verified: true);
                 break;
             case RepairStatus.Repaired:
                 foreach (var f in report.Files)
                     if (f.Problem != "ok")
                         _opt.Report($"set {ShortId(set.SetId)}: repaired '{f.Name}' ({f.Problem})");
                 _opt.Report($"set {ShortId(set.SetId)}: {report.Message}");
+                MaybeRemoveParFiles(set, state, verified: false);
                 break;
             case RepairStatus.NoFiles:
-                _opt.Report($"set {ShortId(set.SetId)}: waiting for data files to appear in '{_directory}'");
+                _opt.Report($"set {ShortId(set.SetId)}: {report.Message}");
                 break;
             case RepairStatus.NotEnoughRecovery:
                 _opt.Report($"set {ShortId(set.SetId)}: {report.Message}");
@@ -205,6 +292,35 @@ public sealed class Par2Monitor
                 _opt.Report($"set {ShortId(set.SetId)}: {report.Message}");
                 break;
         }
+    }
+
+    /// <summary>Remove the set's .par2 files after a successful verify/repair.</summary>
+    private void MaybeRemoveParFiles(RecoverySet set, SetState state, bool verified)
+    {
+        if (!_opt.RemoveParFilesAfterRepair)
+            return;
+        state.Removed = true;
+        state.Announced = null; // re-announce if the set reappears
+        int removed = 0;
+        foreach (var file in set.Files.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (File.Exists(file))
+                {
+                    File.Delete(file);
+                    removed++;
+                }
+            }
+            catch
+            {
+                // the file is locked or gone; leave it for a later scan
+            }
+        }
+        if (removed > 0)
+            _opt.Report($"set {ShortId(set.SetId)}: {(verified ? "verified, " : "repaired, ")}removed {removed} .par2 file(s)");
+        else
+            _opt.Report($"set {ShortId(set.SetId)}: .par2 files already gone");
     }
 
     // A fingerprint of the things that could affect the outcome of a repair:
@@ -255,6 +371,12 @@ public sealed class Par2Monitor
                         sb.Append('-');
                     }
                 }
+
+                // The presence of the set's own .par2 files matters: a set
+                // whose volumes were removed (after a successful repair) or
+                // re-added by the downloader must be re-examined.
+                foreach (var par2 in set.Files.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+                    sb.Append(Path.GetFileName(par2)).Append(File.Exists(par2) ? 1 : 0).Append(',');
             }
         }
         catch

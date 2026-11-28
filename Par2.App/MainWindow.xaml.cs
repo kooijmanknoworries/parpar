@@ -26,6 +26,8 @@ public partial class MainWindow : Window
     {
         LoadSettingsIntoUi();
         UpdateFileList();
+        if (App.AutoStartMonitor && MonDirBox.Text.Length > 0 && Directory.Exists(MonDirBox.Text.Trim()))
+            StartMonitorFromUi();
     }
 
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -79,6 +81,7 @@ public partial class MainWindow : Window
         MonDirBox.Text = s.MonitorDirectory;
         MonIntervalBox.Text = s.MonitorIntervalSeconds.ToString();
         MonThresholdBox.Text = s.MonitorThresholdPercent.ToString();
+        MonRemoveParCheck.IsChecked = s.MonitorRemoveParFilesAfterRepair;
     }
 
     private int RecFileCountFromSettings(int rfc)
@@ -114,6 +117,7 @@ public partial class MainWindow : Window
             s.MonitorIntervalSeconds = iv;
         if (int.TryParse(MonThresholdBox.Text.Trim(), out int tp) && tp is >= 1 and <= 100)
             s.MonitorThresholdPercent = tp;
+        s.MonitorRemoveParFilesAfterRepair = MonRemoveParCheck.IsChecked == true;
 
         s.Save();
     }
@@ -270,13 +274,17 @@ public partial class MainWindow : Window
         string? dir = Path.GetDirectoryName(Path.GetFullPath(par));
         VerifyDirText.Text = "Directory scanned: " + dir;
 
-        var sets = Par2Scanner.ScanDirectory(dir!);
+        var scan = Par2Scanner.ScanDirectory(dir!);
         string? setId = SetIdOf(par);
-        var set = sets.FirstOrDefault(s => setId != null && s.SetId == setId) ?? sets.FirstOrDefault();
+        var set = scan.Sets.FirstOrDefault(s => setId != null && s.SetId == setId) ?? scan.Sets.FirstOrDefault();
         if (set == null || !set.HasMain)
         {
+            string detail = "";
+            var own = scan.Unreadable.FirstOrDefault(u => Path.GetFileName(u.Path) == Path.GetFileName(par));
+            if (own != null)
+                detail = "\n\n" + Path.GetFileName(par) + ": " + own.Reason;
             AppendStatus("No valid PAR 2.0 recovery set found for this file.");
-            MessageBox.Show(this, "No valid PAR 2.0 recovery set found for this file.\nMake sure all volumes are in the same folder.",
+            MessageBox.Show(this, "No valid PAR 2.0 recovery set found for this file.\nMake sure all volumes are in the same folder." + detail,
                 "ParPar", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -284,10 +292,13 @@ public partial class MainWindow : Window
         VerifyList.Items.Clear();
         _cts = new CancellationTokenSource();
         SetRunning(true);
+        VerifyProgress.Value = 0;
         try
         {
+            var verifyProgress = new Progress<int>(p => Dispatcher.Invoke(() => VerifyProgress.Value = p));
             var repairer = new Par2Repairer(msg => Dispatcher.Invoke(() => AppendStatus(msg)), false);
-            var report = await repairer.RunAsync(set, dir!, repair, _cts.Token);
+            var report = await repairer.RunAsync(set, dir!, repair, _cts.Token, verifyProgress);
+            VerifyProgress.Value = 100;
             foreach (var f in report.Files)
                 VerifyList.Items.Add($"{f.Name} — {f.Problem}");
             AppendStatus(report.Message);
@@ -336,6 +347,11 @@ public partial class MainWindow : Window
     private void MonStartClick(object sender, RoutedEventArgs e)
     {
         SaveSettingsFromUi();
+        StartMonitorFromUi();
+    }
+
+    private void StartMonitorFromUi()
+    {
         string dir = MonDirBox.Text.Trim();
         if (dir.Length == 0 || !Directory.Exists(dir))
         {
@@ -351,7 +367,9 @@ public partial class MainWindow : Window
             IntervalSeconds = interval,
             ThresholdPercent = threshold,
             Quiet = false,
-            Log = msg => Dispatcher.Invoke(() => MonList.Items.Add($"[{DateTime.Now:HH:mm:ss}] {msg}"))
+            RemoveParFilesAfterRepair = MonRemoveParCheck.IsChecked == true,
+            Log = msg => Dispatcher.Invoke(() => MonList.Items.Add($"[{DateTime.Now:HH:mm:ss}] {msg}")),
+            RepairProgress = prog => Dispatcher.Invoke(() => UpdateMonitorProgress(prog))
         };
 
         _cts = new CancellationTokenSource();
@@ -381,6 +399,23 @@ public partial class MainWindow : Window
         MonStartBtn.IsEnabled = true;
         MonStopBtn.IsEnabled = false;
         CancelBtn.IsEnabled = false;
+        MonProgress.Value = 0;
+        MonProgressText.Text = "Idle — no set is being repaired.";
+    }
+
+    private void UpdateMonitorProgress(RepairProgress? prog)
+    {
+        if (prog == null)
+        {
+            MonProgress.Value = 0;
+            MonProgressText.Text = "Idle — no set is being repaired.";
+            return;
+        }
+        MonProgress.Value = prog.Percent;
+        string setId = prog.SetId.Length >= 8 ? prog.SetId[..8] : prog.SetId;
+        MonProgressText.Text = prog.Percent >= 100
+            ? $"Set {setId}: done."
+            : $"Repairing set {setId}: {prog.Percent}%";
     }
 
     // ---- dialogs ----

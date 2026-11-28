@@ -82,6 +82,9 @@ internal static class Program
                         opt.ThresholdPercent = (int)n;
                         break;
                     }
+                    case 'k':
+                        opt.RemoveParFilesAfterRepair = false;
+                        break;
                     case 'q':
                         opt.Quiet = true;
                         break;
@@ -254,8 +257,8 @@ internal static class Program
             return 1;
         }
 
-        var sets = Par2Scanner.ScanDirectory(dir);
-        var set = sets.FirstOrDefault(s => s.SetId == SetIdOf(parName)) ?? sets.FirstOrDefault();
+        var scan = Par2Scanner.ScanDirectory(dir);
+        var set = scan.Sets.FirstOrDefault(s => s.SetId == SetIdOf(parName)) ?? scan.Sets.FirstOrDefault();
         if (set == null || !set.HasMain)
         {
             Error("No valid PAR2 recovery set found for this file.");
@@ -413,6 +416,9 @@ Monitor options:
                       that must be present before a repair is attempted.
                       The expected count is the highest recovery exponent seen
                       plus one, so it grows as more recovery files arrive.
+  -k                  Keep the set's .par2 files after a successful repair
+                      (by default they are deleted once the set is verified
+                      or repaired).
 
 If [files] are not given, the current directory is scanned for non-.par2 files.");
     }
