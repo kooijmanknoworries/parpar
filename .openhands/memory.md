@@ -47,7 +47,8 @@ could not be completed — hence "memory growth + nothing happens". Rewritten:
   net8.0-windows.
 
 ## Open
-- Commit + push the monitor rework; then cut v1.1.0 when the user asks.
+- Monitor rework pushed to main (commits 78cc2fe, 93700d6, 2026-11-28).
+  Cut v1.1.0 when the user asks (same release recipe as v1.0.0).
   Possible future: code-signing (currently unsigned; Windows Smart
   Screen will warn on first run until reputation builds), and a `.zip`/Inno
   Setup installer if the user wants one.
